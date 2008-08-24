@@ -1,11 +1,13 @@
 module CFM
   
-  require 'cfm/cfm_generator'
+  require 'cfm/abs_pitch'
   #require 'pp'
   
   CHROMATIC = (0..11).to_a
   MAJOR = [0,2,4,5,7,9,11]
   
+  # The Scale class takes a half-step sequence as an array and
+  # extends that array into infinity.
   class Scale
     def initialize(steps)
       @steps = steps
@@ -30,66 +32,14 @@ module CFM
 
     # for a scale begining on tonic return the pitch of the next interval 
     def next(tonic, pitch, interval=1)
-      puts "#{tonic} #{pitch} #{interval}"
       off = tonic % 12
       self[self.index(pitch - off) + interval] + off
     end
   end
   
-  
-  class Shape
-    attr_accessor :name, :state, :transform
-    def initialize(name, transform={}, state=nil)
-      @transform = transform.dup
-      @name = name
-      @state = state.dup unless state.nil?
-      @state ||= {
-        :pitch => 55, #C4 #aside form pitch and beat (possibly), these are the start_shape defaults.
-        :beat => 1,
-        :tonic => 60, #C4    
-        :velocity => 120,
-        :scale => Scale.new(MAJOR)
-      }
-      self.transform!
-    end
-
-    
-    def pitch(v, scale)
-      l = scale.length
-      puts("pitch: #{state[:pitch]} v: #{v}")
-      state[:pitch] = state[:pitch] + (scale[v%l] + scale.last*(v/l))
-    end
-    
-    def transform! # this is ugly. where's ruby's += operator?
-      puts @name
-      puts "transform: #{@transform.inspect}"
-      begin
-        @state[:pitch] = @state[:scale].next(@state[:tonic],@state[:pitch])
-        #@state[:pitch] = @state[:pitch] + (@transform[:pitch]||0)
-        @state[:beat]  = @state[:beat]  + (@transform[:beat]||0)
-        @state[:velocity] = [@state[:velocity] + (@transform[:velocity]||0) ,0].max
-      rescue => e
-        raise e
-        #raise "Transform failed for: #{self.inspect}"
-      end
-    end
-    
-    def terminate?
-      state[:beat] > 16 or 
-      state[:beat] < 0 or
-      state[:pitch] > 180 or 
-      state[:pitch] < 20
-    end
-    
-    def inspect
-      "#{name.inspect} - state: #{state.inspect} transform: #{transform.inspect}"
-    end
-  end
-  
-  
-  class Rule < Struct.new(:name, :shapes)
-  end
-
+  # The Canvas class is a grid of pitch and beats.
+  # Each point on the grid contains a hash of the properties that
+  # describe how a note should sound. New hashes are merged with old.
   class Canvas < Hash
     def initialize(default={})
       @default = {
@@ -98,13 +48,16 @@ module CFM
         :channel => 1
       }
     end
-    def place_note(beat,pitch,state = {})
+    def place_note(context)
+      raise ArgumentError, "Context can't be nil" if context.nil?
+      beat  = context.delete(:beat)
+      pitch = context.delete(:pitch)
       raise ArgumentError, "you tried to place a nil beat" if beat.nil?
       raise ArgumentError, "you tried to place a nil pitch" if pitch.nil?
-      puts "  [PLACE_NOTE] #{pitch}"
+      puts "[PLACE_NOTE] #{beat} #{pitch}"
       self[beat] ||= {}
       self[beat][pitch] ||= @default.dup
-      self[beat][pitch].merge! state
+      self[beat][pitch].merge! context
     end
     def to_arkx
       notes = {}
@@ -122,67 +75,142 @@ module CFM
     end
   end
   
-  class Music
+  class Context < Hash
+    def initialize(properties=nil)
+      super()
+      properties ||= {
+        :scale => Scale.new(MAJOR),
+        :tonic => 60,
+        :pitch => 60,
+        :beat  => 1,
+        :velocity => 120
+      }
+      update(properties)
+    end
     
-    attr_accessor :canvas
+    def pitch(t)
+      return t[:pitch] if t[:pitch]
+      return self[:scale].next(self[:tonic], self[:pitch],  t[:up])   if t[:up]
+      return self[:scale].next(self[:tonic], self[:pitch], -t[:down]) if t[:down]
+      self[:pitch]
+    end
     
+    def beat(t)
+      return t[:beat] if t[:beat]
+      return self[:beat]  + t[:forward]      if t[:forward]
+      return [self[:beat] - t[:back],0].max  if t[:back]
+      self[:beat]
+    end
+
+    def velocity(t)
+      return t[:velocity] if t[:velocity]
+      return [self[:velocity]  + t[:harder], 127].min  if t[:harder]
+      return [self[:velocity] - t[:softer],0].max     if t[:softer]
+      self[:velocity]
+    end
+    
+    def scale(t)
+      #TODO: handle pitches that don't exist in the new scale
+      return t[:scale] if t[:scale]
+    end
+    
+    def transform(t)
+      from = self.inspect
+      self[:scale] = scale t   if t[:scale]
+      self[:tonic] = t[:tonic] if t[:tonic]
+      self[:pitch] = pitch t
+      self[:beat]  = beat  t
+      self[:velocity] = velocity t
+      puts "[TRANSFORM] \n\tfrom: #{from} \n\tto #{self.inspect}\n\tfor: #{t.inspect}"
+      self
+    end
+  end
+  
+  class Motif
+    attr_accessor :name, :context
+    def initialize(name, context=nil)
+      @name = name
+      @context = context.dup unless context.nil?
+      @context ||= Context.new
+    end
+    def self.start
+      Motif.new(:start)
+    end
+  end
+  
+  class Rule < Struct.new(:closure, :probability)
+  end
+  
+  class RuleSet
     def initialize
-      @limiter = 200  #basic recursion safety net for now.
-      @todo = [Shape.new(:startshape, {})]
-      @rules = {} #hash of rules keyed by shape name
-      @canvas = Canvas.new
-      @notes = {} #hash of arrays keyed by beat (allows for negative beats for now)
+      @rules = {}
     end
     
-    def add_rule(rule)
-      @rules[rule.name] ||= []
-      @rules[rule.name] << rule
+    #todo: probability isn't hooked up yet
+    def add(name, probability=0.5, &closure)
+      @rules[name] ||= []
+      @rules[name] << Rule.new(closure,probability)
     end
     
-    # alternate for simpler style declaration
-    # def add_rule(name, *shape_args)
-    #   shapes = []
-    #   shape_args.map {|arg| shapes << Shape.new(*arg)}
-    #   rule = Rule.new(name, shapes)
-    #   @rules[rule.name] ||= []
-    #   @rules[rule.name] << rule
-    # end
+    def [](name)
+      candidates = @rules[name]
+      if candidates.nil? then raise "Rule named '#{name}' wasn't found." end
+      return candidates.first if candidates.length == 1
+      return candidates[rand(candidates.length)]  #TODO need to factor in probability here
+    end
+  end
+  
+  # The Music class puts notes on a Canvas and returns
+  # the canvas to the style file.
+  class Music
+    require 'pp'
+    attr_accessor :ruleset, :number_generator, :canvas
+    def initialize(attributes)
+      %w{ruleset number_generator}.each do |attribute|
+        eval("@#{attribute} = attributes[:#{attribute}]")
+      end
+      @limiter = 40 # total number of operations to allow
+      @canvas ||= Canvas.new
+      @motifs = [Motif.start]
+    end
     
-    def lookup_rule(name)
-      rule = @rules[name]
-      if rule.nil? then raise "Rule named '#{name.inspect}' not found." end
-      return rule.first if rule.length == 1
-      return rule[rand(rule.length)]
+    def run(motif)
+      puts "[RUN] #{motif.name}"
+      @context = motif.context
+      @ruleset[motif.name].closure.call(self)
+    end
+    
+    # Adds a motif to the list of motifs to be processed
+    def add(name, transformation={})
+      @motifs << Motif.new(name, @context.dup.transform(transformation))
+    end
+    
+    def matrix(name, probabilities, transformation={})
+      probabilities.each_with_index do |probability, beat|
+        add(name, transformation.merge!(:beat => beat+1) ) if @number_generator[] <= probability
+      end
+    end
+    
+    def note!(transformation={})
+      context = @context.dup.transform(transformation)
+      puts "[NOTE] #{context.inspect}"
+      @canvas.place_note(context)
     end
     
     def done?
       @limiter = @limiter - 1
-      @todo.empty? or @limiter.zero?
+      @motifs.empty? or @limiter.zero?
     end
     
-    
-    # 1: Take a shape off the @todo
-    # 2: Find the rule for that shape
-    # 3: Place a note on the grid if it's named :note!
-    # 4: Place each shape mentioned in the rule on the @todo
     def render
       until done? do
-        start_shape = @todo.pop   #1
-        rule = lookup_rule(start_shape.name)  #2
-        rule.shapes.each do |shape|
-          if shape.name == :note!  #3
-            note = Shape.new(shape.name, shape.transform, start_shape.state)
-            puts "   [Note!] #{shape.inspect} "
-            @canvas.place_note(note.state[:beat], note.state[:pitch], note.state)
-          else #4
-            next_shape = Shape.new(shape.name, shape.transform, start_shape.state)
-            @todo.push next_shape unless next_shape.terminate?
-            #puts @todo.last.inspect
-          end
-        end
+        motif = @motifs.pop
+        rule = run(motif) #run the rule matching this motif
       end
     end
     
-    
   end
+  
+  
+  
 end
