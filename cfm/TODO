@@ -1,0 +1,11 @@
+TODO:
+  + add probabilities to rules so that the 50/50 choice between rules can be tweaked.
+    this is one of the things that makes Context Free art so awesome.
+  + add support for other midi controllers such as modulation, pitch bend, etc.
+    tweaking Reason knobs with CFM would be a way cool win.
+  + figure out how to make it startup without hiccuping
+  + add in support for Chords and whatever else is new to Arkx since I last looked :)
+  + lots more stuff once I get a better grasp of Arkx internals.
+
+Maybe:
+  + detect :generation settings that would lead to infinite recursion.

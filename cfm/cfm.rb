@@ -1,6 +1,7 @@
 module CFM
   
   require 'cfm/abs_pitch'
+  require 'cfm/scales'
   #require 'pp'
   
   CHROMATIC = (0..11).to_a
@@ -12,7 +13,15 @@ module CFM
     def initialize(steps)
       @steps = steps
     end
-
+    
+    def self.name(name)
+      Scale.new(SCALES[name])
+    end
+    
+    def self.mode(i)
+      Scale.new(MODES[i%7])
+    end
+    
     # returns the number of half-steps from zero for any degree of a scale
     def [](degree)
       @steps[degree % @steps.length] + (12*(degree/@steps.length)) 
@@ -36,6 +45,7 @@ module CFM
       self[self.index(pitch - off) + interval] + off
     end
   end
+  
   
   # The Canvas class is a grid of pitch and beats.
   # Each point on the grid contains a hash of the properties that
@@ -83,7 +93,9 @@ module CFM
         :tonic => 60,
         :pitch => 60,
         :beat  => 1,
-        :velocity => 120
+        :duration => 0.1,
+        :velocity => 120,
+        :generations => 30
       }
       update(properties)
     end
@@ -105,13 +117,18 @@ module CFM
     def velocity(t)
       return t[:velocity] if t[:velocity]
       return [self[:velocity]  + t[:harder], 127].min  if t[:harder]
-      return [self[:velocity] - t[:softer],0].max     if t[:softer]
+      return [self[:velocity] - t[:softer],0].max      if t[:softer]
       self[:velocity]
     end
     
     def scale(t)
       #TODO: handle pitches that don't exist in the new scale
       return t[:scale] if t[:scale]
+    end
+    
+    def generations(t)
+      return t[:genrations] if t[:generations]
+      return self[:generations] - 1 
     end
     
     def transform(t)
@@ -121,6 +138,8 @@ module CFM
       self[:pitch] = pitch t
       self[:beat]  = beat  t
       self[:velocity] = velocity t
+      self[:duration] = t[:duration] if t[:duration]
+      self[:generations] = generations t
       puts "[TRANSFORM] \n\tfrom: #{from} \n\tto #{self.inspect}\n\tfor: #{t.inspect}"
       self
     end
@@ -169,7 +188,6 @@ module CFM
       %w{ruleset number_generator}.each do |attribute|
         eval("@#{attribute} = attributes[:#{attribute}]")
       end
-      @limiter = 40 # total number of operations to allow
       @canvas ||= Canvas.new
       @motifs = [Motif.start]
     end
@@ -182,7 +200,9 @@ module CFM
     
     # Adds a motif to the list of motifs to be processed
     def add(name, transformation={})
-      @motifs << Motif.new(name, @context.dup.transform(transformation))
+      if @context[:generations] > 0
+        @motifs << Motif.new(name, @context.dup.transform(transformation))
+      end
     end
     
     def matrix(name, probabilities, transformation={})
@@ -198,8 +218,7 @@ module CFM
     end
     
     def done?
-      @limiter = @limiter - 1
-      @motifs.empty? or @limiter.zero?
+      @motifs.empty?
     end
     
     def render
