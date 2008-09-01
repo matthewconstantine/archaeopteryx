@@ -1,3 +1,7 @@
+Matt's fork of Arkx with a "Context Free" generator added on, see below.
+
+Archaeopteryx readme:
+------
 Alpha! Not release-ready! Here be dragonnes! etc.
 
 Archaeopteryx is a MIDI system for Ruby based on code from Topher Cyll's book "Practical Ruby
@@ -8,4 +12,38 @@ MP3 playback, and crossfades between existing MP3 tracks.
 
 Archaeopteryx is a Ruby front-end to prosumer music software such as Propellerhead Reason and
 Ableton Live. You need a MIDI consumer to get anything useful out of it. 
+-------
 
+CFM Readme:
+== Context Free Music Generator ==
+by Matt Constantine (designmc at gmail, matt20120 on aim)
+
+The idea behind CFM is to do for music what Context Free Art (see contextfreeart.org) does for graphics. It might not be considered "context free" in the end, but that's the inspiration nevertheless.
+
+To see this in action, first make sure you have a Midi synth hooked up and running, GarageBand will work just fine. Make sure you have a melodic patch of some sort loaded electric piano works nice. 
+
+Then run 'ruby eval_cfm.rb cfm/styles/example.rb' to get started. 
+
+Each file in /styles/ defines a set of rules to generate a piece of music. Each rule passes a transformation to other rules. 
+
+If a rule is specified more than once, the CFM renderer randomly chooses between the two. For example, if a rule name :foo transforms notes up and another rule named :foo transforms them down, CFM will pick between the two producing a random walk. If a rule contains a 'm.note!' command, that rule will produce a note.
+
+Basic transformations include: 
+  :scale - sets the musical scale for child motifs to follow.
+  :pitch - sets the absolute pitch for the context
+  :beat - sets the absolute beat for the context
+  :up or :down - changes pitch relative to the context
+  :forward or :backward changes the beat relative to the context
+  :harder or :softer changes the midi velocity, generally how loudly a note is played.
+  :duration - sets a absolute duration for a note (no relative controls yet)
+  :generations - sets the maximum number of descendent motifs a rule can produce. This provides a limit to recursion. You can overwrite this in descendent motifs, but there's no safety net for the time being.
+
+The m.note! command plays a note. It takes transformations just like the rules.
+
+The m.matrix triggers rules using a probability matrix just like the Arkx beat generator. Because it triggers rules and rules can do anything this opens up some new creative options for beats.
+
+The notes produced by CFM are placed onto a matrix called the Canvas. Each point on the canvas is a hash. When a note is placed over an existing note its properties are merged with Hash#merge. So for example, one m.matrix function could specify the pitches to play, while another specifies the velocity to play each pitch. Once support is added in for tweaking midi controllers many more possibilities will emerge.
+
+True to Arkx nature, rules can be tweaked in a realtime performance.
+
+Thanks to Giles for the wonder that is Arkx. Thanks to Jeremy Voorhis for the abs_pitch class.
