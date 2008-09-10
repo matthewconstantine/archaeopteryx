@@ -18,9 +18,20 @@ CFM Readme:
 == Context Free Music Generator ==
 by Matt Constantine (designmc at gmail, matt20120 on aim)
 
+== What is this thing?
 The idea behind CFM is to do for music what Context Free Art (see contextfreeart.org) does for graphics. It might not be considered "context free" in the end, but that's the inspiration nevertheless.
 
-To see this in action, first make sure you have a Midi synth hooked up and running, GarageBand will work just fine. Make sure you have a melodic patch of some sort loaded electric piano works nice. 
+It's a rule based generator, not necessarily just for melodies. For example, drum_example.rb uses a probability matrix to fire off rules. Those rules can call other rules and so on. If a rule is defined more than once, the generator picks randomly from each of them.
+
+So a matrix could call a rule named :snare which is defined several times each time doing something different, varying a velocity, note number, or whatever. Say I want a bit more variation in what the snare is doing, I can make a rule that plays a triplet and hear the results realtime. And when it plays a triplet, maybe I want the last note accented, another rule or two and it's done.
+
+The point is, is that it allows me to develop a rhythm or aleatoric melody and evolve it over time. It's pretty easy to get started with it playing quarter notes, or a scale or whatever, and turn that into something insanely complex as more and more rules are added. Each of the transformations become little toys to experiment with. A programmer/musician can develop what-ifs and hear those live. What if I send all the hi-hat hits back in time a beat or two, what if I shift this part up an octave? What if I play a static melody and shift it from dorian to lydian? What if I create a treble glissando triggered off of the tone of the occasional note of the sub-bass?
+
+I don't know what kind of music this will be good for, but I know from the ContextFree Art community that the concept is a ton of fun (their community gallery at contextfreeart.org has lots of examples). It's interesting to see what we get with that applied to music.
+
+== Getting Started
+To see this in action, first make sure you have a Midi synth hooked up and running, GarageBand will work just fine. See Evan Light's tutorial to get started with GarageBand: http://evan.tiggerpalace.com/2008/08/10/archaeopteryx-using-garageband/ 
+Make sure you have a melodic patch of some sort loaded electric piano works nice. 
 
 Then run 'ruby eval_cfm.rb cfm/styles/example.rb' to get started. 
 
